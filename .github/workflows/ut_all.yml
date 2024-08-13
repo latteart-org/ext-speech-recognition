@@ -1,0 +1,79 @@
+name: UT all
+
+on:
+  push:
+    branches:
+      - "release/**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  ut_all:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.15.0]
+
+    steps:
+      - name: Get Base Release Ref
+        id: get_base_release_ref
+        run: |
+          echo base_release_ref=$(git ls-remote --sort=-v:refname https://github.com/${{ github.repository_owner }}/latteart.git release/* develop | cut -f 2 | head -n 1) >> $GITHUB_OUTPUT
+
+      - name: Get Base Ref
+        id: get_base_ref
+        run: |
+          echo base_ref=${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && 'refs/heads/main' || (startsWith(github.ref, 'refs/heads/release') && steps.get_base_release_ref.outputs.base_release_ref || 'refs/heads/develop') }} >> $GITHUB_OUTPUT
+
+      - name: Checkout 'LatteArt(${{ steps.get_base_ref.outputs.base_ref }})' Repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.repository_owner }}/latteart
+          ref: ${{ steps.get_base_ref.outputs.base_ref }}
+          path: latteart
+
+      - name: Checkout 'ext-speech-recognition(${{ github.ref }})' Repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+          path: ext-speech-recognition
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Copy extension files to 'LatteArt'
+        run: |
+          mkdir -p latteart/packages/latteart-gui/src/extensions/ext-speech-recognition
+          cp -r ext-speech-recognition/gui latteart/packages/latteart-gui/src/extensions/ext-speech-recognition
+          
+      - name: Modify files for extension import
+        run: |
+          sed -i "s#/\* ADD EXTENSIONS \*/#extSpeechRecognition,#g" latteart/packages/latteart-gui/src/extensions/index.ts
+          sed -i "s#/\* ADD IMPORTS FOR EXTENSIONS \*/#import \{ extSpeechRecognition \} from \"\./ext-speech-recognition/gui\";#g" latteart/packages/latteart-gui/src/extensions/index.ts
+          
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        id: cache-dependencies
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: "latteart/**/node_modules"
+          key: ${{ runner.os }}-build-${{ matrix.node-version }}-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        if: ${{ steps.cache-dependencies.outputs.cache-hit != 'true' }}
+        run: |
+          cd latteart
+          npm install
+          cd ..
+
+      - name: Run Tests
+        run: |
+          cd latteart
+          npm run build -w latteart-client
+          npm run test
+          cd ..

@@ -1,0 +1,483 @@
+name: Package all
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: 'OS'
+        required: true
+        default: "['win']"
+        type: choice
+        options:
+          - "['win']"
+          - "['mac']"
+          - "['win', 'mac']"
+
+jobs:
+  set_matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      os: ${{ steps.setmatrix.outputs.os }}
+    steps:
+      - name: Set matrix
+        id: setmatrix
+        run: |
+          echo "os=${{ inputs.os }}" >> $GITHUB_OUTPUT
+  
+  package_launch:
+    runs-on: ubuntu-latest
+
+    needs: set_matrix
+
+    strategy:
+      matrix:
+        node-version: [18.15.0]
+        os: ${{ fromJSON(needs.set_matrix.outputs.os) }}
+
+    steps:
+      - name: Get Base Release Ref
+        id: get_base_release_ref
+        run: |
+          echo base_release_ref=$(git ls-remote --sort=-v:refname https://github.com/${{ github.repository_owner }}/latteart.git release/* develop | cut -f 2 | head -n 1) >> $GITHUB_OUTPUT
+
+      - name: Get Base Ref
+        id: get_base_ref
+        run: |
+          echo base_ref=${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && 'refs/heads/main' || (startsWith(github.ref, 'refs/heads/release') && steps.get_base_release_ref.outputs.base_release_ref || 'refs/heads/develop') }} >> $GITHUB_OUTPUT
+
+      - name: Checkout 'LatteArt(${{ steps.get_base_ref.outputs.base_ref }})' Repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.repository_owner }}/latteart
+          ref: ${{ steps.get_base_ref.outputs.base_ref }}
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        id: cache-dependencies
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-build-${{ matrix.node-version }}-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        if: ${{ steps.cache-dependencies.outputs.cache-hit != 'true' }}
+        run: |
+          npm install
+
+      - name: Package
+        run: |
+          npm run package:${{ matrix.os }} -w latteart-launch
+
+      - name: Make Artifact
+        run: |
+          mkdir artifact
+          cp -r packages/latteart-launch/dist/package/${{ matrix.os }}/latteart/* artifact
+
+      - name: Get Base Ref Name
+        id: get_base_ref_name
+        run: |
+          echo base_ref_name=$(echo ${{ steps.get_base_ref.outputs.base_ref }} | cut -d/ -f3-) >> $GITHUB_OUTPUT
+
+      - name: Build Artifact Name
+        id: build_artifact_name
+        run: |
+          ARTIFACT_NAME=$(echo ${{ steps.get_base_ref_name.outputs.base_ref_name }}-spr-${{ github.ref_name }} | sed "s/\//-/g")
+          echo artifact_name=$ARTIFACT_NAME >> $GITHUB_OUTPUT
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: latteart-launch-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+  package_cli:
+    runs-on: ubuntu-latest
+
+    needs: set_matrix
+
+    strategy:
+      matrix:
+        node-version: [18.15.0]
+        os: ${{ fromJSON(needs.set_matrix.outputs.os) }}
+
+    steps:
+      - name: Get Base Release Ref
+        id: get_base_release_ref
+        run: |
+          echo base_release_ref=$(git ls-remote --sort=-v:refname https://github.com/${{ github.repository_owner }}/latteart.git release/* develop | cut -f 2 | head -n 1) >> $GITHUB_OUTPUT
+
+      - name: Get Base Ref
+        id: get_base_ref
+        run: |
+          echo base_ref=${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && 'refs/heads/main' || (startsWith(github.ref, 'refs/heads/release') && steps.get_base_release_ref.outputs.base_release_ref || 'refs/heads/develop') }} >> $GITHUB_OUTPUT
+
+      - name: Checkout 'LatteArt(${{ steps.get_base_ref.outputs.base_ref }})' Repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.repository_owner }}/latteart
+          ref: ${{ steps.get_base_ref.outputs.base_ref }}
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        id: cache-dependencies
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-build-${{ matrix.node-version }}-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        if: ${{ steps.cache-dependencies.outputs.cache-hit != 'true' }}
+        run: |
+          npm install
+
+      - name: Package
+        run: |
+          npm run package:${{ matrix.os }} -w latteart-cli
+
+      - name: Make Artifact
+        run: |
+          mkdir artifact
+          cp -r packages/latteart-cli/dist/package/${{ matrix.os }}/latteart/* artifact
+
+      - name: Get Base Ref Name
+        id: get_base_ref_name
+        run: |
+          echo base_ref_name=$(echo ${{ steps.get_base_ref.outputs.base_ref }} | cut -d/ -f3-) >> $GITHUB_OUTPUT
+
+      - name: Build Artifact Name
+        id: build_artifact_name
+        run: |
+          ARTIFACT_NAME=$(echo ${{ steps.get_base_ref_name.outputs.base_ref_name }}-spr-${{ github.ref_name }} | sed "s/\//-/g")
+          echo artifact_name=$ARTIFACT_NAME >> $GITHUB_OUTPUT
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: latteart-cli-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+  package_gui:
+    runs-on: ubuntu-latest
+
+    needs: set_matrix
+
+    strategy:
+      matrix:
+        node-version: [18.15.0]
+        os: ${{ fromJSON(needs.set_matrix.outputs.os) }}
+
+    steps:
+      - name: Get Base Release Ref
+        id: get_base_release_ref
+        run: |
+          echo base_release_ref=$(git ls-remote --sort=-v:refname https://github.com/${{ github.repository_owner }}/latteart.git release/* develop | cut -f 2 | head -n 1) >> $GITHUB_OUTPUT
+
+      - name: Get Base Ref
+        id: get_base_ref
+        run: |
+          echo base_ref=${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && 'refs/heads/main' || (startsWith(github.ref, 'refs/heads/release') && steps.get_base_release_ref.outputs.base_release_ref || 'refs/heads/develop') }} >> $GITHUB_OUTPUT
+
+      - name: Checkout 'LatteArt(${{ steps.get_base_ref.outputs.base_ref }})' Repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.repository_owner }}/latteart
+          ref: ${{ steps.get_base_ref.outputs.base_ref }}
+          path: latteart
+
+      - name: Checkout 'ext-speech-recognition(${{ github.ref }})' Repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+          path: ext-speech-recognition
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Copy extension files to 'LatteArt'
+        run: |
+          mkdir -p latteart/packages/latteart-gui/src/extensions/ext-speech-recognition
+          cp -r ext-speech-recognition/gui latteart/packages/latteart-gui/src/extensions/ext-speech-recognition
+
+      - name: Modify files for extension import
+        run: |
+          sed -i "s#/\* ADD EXTENSIONS \*/#extSpeechRecognition,#g" latteart/packages/latteart-gui/src/extensions/index.ts
+          sed -i "s#/\* ADD IMPORTS FOR EXTENSIONS \*/#import \{ extSpeechRecognition \} from \"\./ext-speech-recognition/gui\";#g" latteart/packages/latteart-gui/src/extensions/index.ts
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        id: cache-dependencies
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: "latteart/**/node_modules"
+          key: ${{ runner.os }}-build-${{ matrix.node-version }}-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        if: ${{ steps.cache-dependencies.outputs.cache-hit != 'true' }}
+        run: |
+          cd latteart
+          npm install
+          cd ..
+
+      - name: Package
+        run: |
+          cd latteart
+          npm run build -w latteart-client
+          npm run package -w latteart-gui
+          cd ..
+
+      - name: Make Artifact
+        run: |
+          mkdir artifact
+          cp -r latteart/packages/latteart-gui/dist/package/latteart/* artifact
+
+      - name: Get Base Ref Name
+        id: get_base_ref_name
+        run: |
+          echo base_ref_name=$(echo ${{ steps.get_base_ref.outputs.base_ref }} | cut -d/ -f3-) >> $GITHUB_OUTPUT
+
+      - name: Build Artifact Name
+        id: build_artifact_name
+        run: |
+          ARTIFACT_NAME=$(echo ${{ steps.get_base_ref_name.outputs.base_ref_name }}-spr-${{ github.ref_name }} | sed "s/\//-/g")
+          echo artifact_name=$ARTIFACT_NAME >> $GITHUB_OUTPUT
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: latteart-gui-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+  package_repository:
+    runs-on: ubuntu-latest
+
+    needs: set_matrix
+
+    strategy:
+      matrix:
+        node-version: [18.15.0]
+        os: ${{ fromJSON(needs.set_matrix.outputs.os) }}
+
+    steps:
+      - name: Get Base Release Ref
+        id: get_base_release_ref
+        run: |
+          echo base_release_ref=$(git ls-remote --sort=-v:refname https://github.com/${{ github.repository_owner }}/latteart.git release/* develop | cut -f 2 | head -n 1) >> $GITHUB_OUTPUT
+
+      - name: Get Base Ref
+        id: get_base_ref
+        run: |
+          echo base_ref=${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && 'refs/heads/main' || (startsWith(github.ref, 'refs/heads/release') && steps.get_base_release_ref.outputs.base_release_ref || 'refs/heads/develop') }} >> $GITHUB_OUTPUT
+
+      - name: Checkout 'LatteArt(${{ steps.get_base_ref.outputs.base_ref }})' Repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.repository_owner }}/latteart
+          ref: ${{ steps.get_base_ref.outputs.base_ref }}
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        id: cache-dependencies
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: "latteart/**/node_modules"
+          key: ${{ runner.os }}-build-${{ matrix.node-version }}-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        if: ${{ steps.cache-dependencies.outputs.cache-hit != 'true' }}
+        run: |
+          npm install
+
+      - name: Package
+        run: |
+          npm run package:${{ matrix.os }} -w latteart-repository
+
+      - name: Make Artifact
+        run: |
+          mkdir artifact
+          cp -r latteart/packages/latteart-repository/dist/package/${{ matrix.os }}/latteart/* artifact
+
+      - name: Get Base Ref Name
+        id: get_base_ref_name
+        run: |
+          echo base_ref_name=$(echo ${{ steps.get_base_ref.outputs.base_ref }} | cut -d/ -f3-) >> $GITHUB_OUTPUT
+
+      - name: Build Artifact Name
+        id: build_artifact_name
+        run: |
+          ARTIFACT_NAME=$(echo ${{ steps.get_base_ref_name.outputs.base_ref_name }}-spr-${{ github.ref_name }} | sed "s/\//-/g")
+          echo artifact_name=$ARTIFACT_NAME >> $GITHUB_OUTPUT
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: latteart-repository-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+  package_capture_cl:
+    runs-on: ubuntu-latest
+
+    needs: set_matrix
+
+    strategy:
+      matrix:
+        node-version: [18.15.0]
+        os: ${{ fromJSON(needs.set_matrix.outputs.os) }}
+
+    steps:
+      - name: Get Base Release Ref
+        id: get_base_release_ref
+        run: |
+          echo base_release_ref=$(git ls-remote --sort=-v:refname https://github.com/${{ github.repository_owner }}/latteart.git release/* develop | cut -f 2 | head -n 1) >> $GITHUB_OUTPUT
+
+      - name: Get Base Ref
+        id: get_base_ref
+        run: |
+          echo base_ref=${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && 'refs/heads/main' || (startsWith(github.ref, 'refs/heads/release') && steps.get_base_release_ref.outputs.base_release_ref || 'refs/heads/develop') }} >> $GITHUB_OUTPUT
+
+      - name: Checkout 'LatteArt(${{ steps.get_base_ref.outputs.base_ref }})' Repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.repository_owner }}/latteart
+          ref: ${{ steps.get_base_ref.outputs.base_ref }}
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        id: cache-dependencies
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: "**/node_modules"
+          key: ${{ runner.os }}-build-${{ matrix.node-version }}-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        if: ${{ steps.cache-dependencies.outputs.cache-hit != 'true' }}
+        run: |
+          npm install
+
+      - name: Package
+        run: |
+          npm run package:${{ matrix.os }} -w latteart-capture-cl
+
+      - name: Make Artifact
+        run: |
+          mkdir artifact
+          cp -r packages/latteart-capture-cl/dist/package/${{ matrix.os }}/latteart/* artifact
+
+      - name: Get Base Ref Name
+        id: get_base_ref_name
+        run: |
+          echo base_ref_name=$(echo ${{ steps.get_base_ref.outputs.base_ref }} | cut -d/ -f3-) >> $GITHUB_OUTPUT
+
+      - name: Build Artifact Name
+        id: build_artifact_name
+        run: |
+          ARTIFACT_NAME=$(echo ${{ steps.get_base_ref_name.outputs.base_ref_name }}-spr-${{ github.ref_name }} | sed "s/\//-/g")
+          echo artifact_name=$ARTIFACT_NAME >> $GITHUB_OUTPUT
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: latteart-capture-cl-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+  collect-packages:
+    runs-on: ubuntu-latest
+
+    needs:
+      [
+        set_matrix,
+        package_launch,
+        package_cli,
+        package_gui,
+        package_repository,
+        package_capture_cl,
+      ]
+
+    strategy:
+      matrix:
+        node-version: [18.15.0]
+        os: ${{ fromJSON(needs.set_matrix.outputs.os) }}
+
+    steps:
+      - name: Get Base Release Ref
+        id: get_base_release_ref
+        run: |
+          echo base_release_ref=$(git ls-remote --sort=-v:refname https://github.com/${{ github.repository_owner }}/latteart.git release/* develop | cut -f 2 | head -n 1) >> $GITHUB_OUTPUT
+
+      - name: Get Base Ref
+        id: get_base_ref
+        run: |
+          echo base_ref=${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && 'refs/heads/main' || (startsWith(github.ref, 'refs/heads/release') && steps.get_base_release_ref.outputs.base_release_ref || 'refs/heads/develop') }} >> $GITHUB_OUTPUT
+
+      - name: Get Base Ref Name
+        id: get_base_ref_name
+        run: |
+          echo base_ref_name=$(echo ${{ steps.get_base_ref.outputs.base_ref }} | cut -d/ -f3-) >> $GITHUB_OUTPUT
+
+      - name: Build Artifact Name
+        id: build_artifact_name
+        run: |
+          ARTIFACT_NAME=$(echo ${{ steps.get_base_ref_name.outputs.base_ref_name }}-spr-${{ github.ref_name }} | sed "s/\//-/g")
+          echo artifact_name=$ARTIFACT_NAME >> $GITHUB_OUTPUT
+
+      - name: Download latteart-launch Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: latteart-launch-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+      - name: Download latteart-cli Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: latteart-cli-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+      - name: Download latteart-gui Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: latteart-gui-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+      - name: Download latteart-repository Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: latteart-repository-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+      - name: Download latteart-capture-cl Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: latteart-capture-cl-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: latteart-${{ steps.build_artifact_name.outputs.artifact_name }}-${{ matrix.os }}
+          path: artifact
