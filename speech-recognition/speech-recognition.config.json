@@ -1,0 +1,5 @@
+{
+  "modelPath": "./models/vosk-model-small-ja-0.22",
+  "sampleRate": 16000,
+  "voskLogLevel": 1
+}
