@@ -1,0 +1,14 @@
+{
+  "speech-recognition": {
+    "config": {
+      "title": "Speech Recognition Settings",
+      "subtitle": "Recording Comments",
+      "enabled": "Record voice input from the microphone during testing as comments.",
+      "server-url": "Speech Recognition Server URL"
+    },
+    "error": {
+      "connection-failed": "Failed to connect to Speech Recognition Server. Please check target URL from Config page.",
+      "disconnected": "Speech Recognition Server disconnected."
+    }
+  }
+}

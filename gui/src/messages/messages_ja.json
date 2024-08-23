@@ -1,0 +1,14 @@
+{
+  "speech-recognition": {
+    "config": {
+      "title": "音声認識設定",
+      "subtitle": "音声を用いたコメントの記録",
+      "enabled": "テスト中にマイクから入力された音声をコメントとして記録する",
+      "server-url": "音声認識サーバURL"
+    },
+    "error": {
+      "connection-failed": "音声認識サーバとの接続に失敗しました。設定画面から接続先のURLを確認してください。",
+      "disconnected": "音声認識サーバとの接続が切断されました。"
+    }
+  }
+}
