@@ -315,7 +315,7 @@ jobs:
       - name: Make Artifact
         run: |
           mkdir artifact
-          cp -r latteart/packages/latteart-repository/dist/package/${{ matrix.os }}/latteart/* artifact
+          cp -r packages/latteart-repository/dist/package/${{ matrix.os }}/latteart/* artifact
 
       - name: Get Base Ref Name
         id: get_base_ref_name
