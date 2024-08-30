@@ -19,6 +19,11 @@ jobs:
         node-version: [18.15.0]
 
     steps:
+      - name: Get Base Tag Ref
+        id: get_base_tag_ref
+        run: |
+          echo base_tag_ref=$(git ls-remote --sort=-v:refname --tags https://github.com/${{ github.repository_owner }}/latteart.git | cut -f 2 | head -n 1) >> $GITHUB_OUTPUT
+
       - name: Get Base Release Ref
         id: get_base_release_ref
         run: |
@@ -27,7 +32,7 @@ jobs:
       - name: Get Base Ref
         id: get_base_ref
         run: |
-          echo base_ref=${{ (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && 'refs/heads/main' || (startsWith(github.ref, 'refs/heads/release') && steps.get_base_release_ref.outputs.base_release_ref || 'refs/heads/develop') }} >> $GITHUB_OUTPUT
+          echo base_ref=${{ github.ref_type == 'tag' && steps.get_base_tag_ref.outputs.base_tag_ref || github.ref == 'refs/heads/main' && 'refs/heads/main' || (startsWith(github.ref, 'refs/heads/release') && steps.get_base_release_ref.outputs.base_release_ref || 'refs/heads/develop') }} >> $GITHUB_OUTPUT
       
       - name: Checkout 'LatteArt(${{ steps.get_base_ref.outputs.base_ref }})' Repository
         uses: actions/checkout@v3
